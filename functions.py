@@ -7,6 +7,8 @@ from datetime import datetime
 from pandas._libs.tslibs.timestamps import Timestamp
 
 access_token = st.secrets["access_token"]
+app_token_assinas = st.secrets["app_token_assinas"]
+access_token_assinas = st.secrets["access_token_assinas"]
 object_type = 'tickets'
 pipeline_id = '27860857'
 propriedades = ['createdate', 'subject', 'cs__licenca', 'hs_pipeline_stage', 'hubspot_owner_id', 'imob__tiers', 'imp___erp__produto', 'imp___erp__combo', 'imob__quantidade_contratos','imob__plano_imobiliarias', 'closed_date', 'hs_date_exited_66260749']
@@ -65,7 +67,7 @@ def pjbank(produtos):
     else:
       return False
   else:
-    return True
+    return False
 
 def imp_extra(nome):
   if nome:
@@ -278,3 +280,18 @@ def tabelatempos(implantacoes):
     resumo_tempos['limite_sup'] = resumo_tempos['mean'] + resumo_tempos['std']
     resumo_tempos = resumo_tempos.round(2)
     return resumo_tempos, tabelatempos
+
+def verificaprimeiropagamento():
+    urlAssinas = 'https://api.superlogica.net/v2/financeiro/recorrencias/recorrenciasdeplanos?tipo=contratospendentes&pendentePrimeiroPagamento=true'
+
+    headersAssinas = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'app_token': app_token_assinas,
+      'access_token': access_token_assinas
+    }
+
+    response = requests.get(urlAssinas, headers=headersAssinas).json()
+    df = pd.DataFrame(response)
+    primeiroboletopendente = df['st_identificador_plc'].drop_duplicates()
+    return primeiroboletopendente

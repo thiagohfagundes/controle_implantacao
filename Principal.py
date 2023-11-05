@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from functions import atualiza_dados, metricas_em_andamento, metricas_dashboard, ultimos12meses, tabelatempos
+from functions import atualiza_dados, metricas_em_andamento, verificaprimeiropagamento, metricas_dashboard, ultimos12meses, tabelatempos
 import plotly.express as px
 from pandas._libs.tslibs.timestamps import Timestamp
 
@@ -329,7 +329,24 @@ with tab3:
 
 with tab5:
     st.write("#### Gestão de kickoff")
-    st.text("Em breve")
+
+    tab1, tab2, tab3, tab4 = st.columns(spec=[1,1,1,1])
+
+    with tab1:
+        st.metric("Clientes em KICKOFF", em_andamento.loc[em_andamento['etapa_pipeline']=='KICKOFF'].createdate.count())
+    with tab2:
+        st.metric("Clientes em KICKOFF AGENDADO", em_andamento.loc[em_andamento['etapa_pipeline']=='KICKOFF AGENDADO'].createdate.count())
+    primeiroboletopendente = verificaprimeiropagamento()
+    aguardandokickoff = em_andamento.loc[(em_andamento['etapa_pipeline']=='KICKOFF')|(em_andamento['etapa_pipeline']=='KICKOFF AGENDADO')]
+    aguardandokickoff['pendente'] = aguardandokickoff['cs__licenca'].isin(primeiroboletopendente)
+    aguardandokickoff = aguardandokickoff[['subject', 'createdate', 'imob__tiers', 'etapa_pipeline', 'Nome do proprietário', 'plano_macro', 'qtde_contratos', 'tempo_processo', 'pendente']]
+    aguardandokickoff = aguardandokickoff.loc[aguardandokickoff['pendente'] == True]
+    with tab3:
+        st.metric("Primeiros boletos pendentes", aguardandokickoff.createdate.count())
+    
+    st.write("#### Clientes com boleto pendente")
+    st.dataframe(aguardandokickoff)
+
 
 with tab6:
     st.write("#### Clientes em risco")
