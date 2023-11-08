@@ -33,19 +33,13 @@ with st.sidebar:
         format="DD/MM/YYYY",
     )
 
-    datafinalizacao = st.date_input(
-        "Filtre por data de fechamento",
-        (implantacoes_sem_tempos['closed_date'].min(), implantacoes_sem_tempos['closed_date'].max()),
-        format="DD/MM/YYYY",
-    )
+    #proprietarios = st.multiselect(
+        #'Filtre por proprietário',
+        #lista_proprietarios,
+    #)
 
-    proprietarios = st.multiselect(
-        'Filtre por proprietário',
-        lista_proprietarios,
-    )
-
+    contratos = st.slider(label='Quantidade de contratos', value=[int(em_andamento['qtde_contratos'].min()), int(em_andamento['qtde_contratos'].max())], step=10)
     extras = st.toggle("Implantações e treinamentos extras")
-
     aplicar = st.button("Aplicar filtros")
     resetar = st.button("Resetar filtros")
 
@@ -53,12 +47,19 @@ with st.sidebar:
     if aplicar:
         datainiciocriacao = Timestamp(datacriacao[0], tz='UTC')
         datafinalcriacao = Timestamp(datacriacao[1], tz='UTC')
-        datainiciofechamento = Timestamp(datafinalizacao[0], tz='UTC')
-        datafinalfechamento = Timestamp(datafinalizacao[1], tz='UTC')
-        implantacoes_sem_tempos = implantacoes_sem_tempos.loc[(implantacoes_sem_tempos['implantacao_extra']==extras)&(implantacoes_sem_tempos['createdate']>=datainiciocriacao)&(implantacoes_sem_tempos['createdate']<=datafinalcriacao)&(implantacoes_sem_tempos['closed_date']>=datainiciofechamento)&(implantacoes_sem_tempos['closed_date']<=datafinalfechamento)]
-        implantacoes = implantacoes.loc[(implantacoes['implantacao_extra']==extras)&(implantacoes['createdate']>=datainiciocriacao)&(implantacoes_sem_tempos['createdate']<datafinalcriacao)&(implantacoes['closed_date']>=datainiciofechamento)&(implantacoes['closed_date']<=datafinalfechamento)]       
-        implantacoes_sem_tempos = implantacoes_sem_tempos.loc[implantacoes_sem_tempos["Nome do proprietário"].isin(proprietarios)]
-        implantacoes = implantacoes.loc[implantacoes["Nome do proprietário"].isin(proprietarios)]
+        if contratos[0] == 0:
+            implantacoes_sem_tempos = implantacoes_sem_tempos.loc[(implantacoes_sem_tempos['qtde_contratos']<=contratos[1])&(implantacoes_sem_tempos['createdate']>=datainiciocriacao)&(implantacoes_sem_tempos['createdate']<=datafinalcriacao)]
+            implantacoes = implantacoes.loc[(implantacoes['qtde_contratos']<=contratos[1])&(implantacoes['createdate']>=datainiciocriacao)&(implantacoes_sem_tempos['createdate']<datafinalcriacao)]
+            mensagem = f"Este filtro está retornando apenas clientes com quantidade de contratos definida"
+            st.write(mensagem)
+        else:
+            implantacoes_sem_tempos = implantacoes_sem_tempos.loc[(implantacoes_sem_tempos['qtde_contratos']>=contratos[0])&(implantacoes_sem_tempos['qtde_contratos']<=contratos[1])&(implantacoes_sem_tempos['createdate']>=datainiciocriacao)&(implantacoes_sem_tempos['createdate']<=datafinalcriacao)]
+            implantacoes = implantacoes.loc[(implantacoes['qtde_contratos']>=contratos[0])&(implantacoes['qtde_contratos']<=contratos[1])&(implantacoes['createdate']>=datainiciocriacao)&(implantacoes_sem_tempos['createdate']<datafinalcriacao)]       
+
+        if extras == False:
+            implantacoes = implantacoes.loc[(implantacoes['implantacao_extra']!=True)]
+            implantacoes_sem_tempos = implantacoes_sem_tempos.loc[(implantacoes_sem_tempos['implantacao_extra']!=True)]
+
     if resetar:
         st.rerun()
 
@@ -129,7 +130,7 @@ with tab1:
         st.metric("Clientes na fila", int(clientes_na_fila))
     with col4:
         st.metric("Saldo do mês", int(saldo_do_mes))
-        st.metric("Churn rate", f"{canceladas_no_mes/(contagem + finalizadas_no_mes + canceladas_no_mes)}%")
+        st.metric("Churn rate", f"{round(canceladas_no_mes*100/(contagem + finalizadas_no_mes + canceladas_no_mes),2)}%")
         st.metric("Consultores ativos", consultores_ativos)
         st.metric("Troughput", f"{troughput}%")
 
@@ -281,10 +282,10 @@ with tab2:
 
     st.write("#### Todas as implantações em andamento")
     tempos = st.slider(label='Tempo no processo', value=[0, em_andamento['tempo_processo'].max()])
-    extras = st.toggle("Atrasadas", value=True)
+    atrasadas = st.toggle("Atrasadas", value=True)
 
     if tempos:
-        if extras == True:
+        if atrasadas == True:
             em_andamento_sem_tempos = em_andamento_sem_tempos.loc[(em_andamento_sem_tempos['Atraso']==True)&(em_andamento_sem_tempos['tempo_processo']>=tempos[0])&(em_andamento['tempo_processo']<tempos[1])]
             st.write(f"Exibindo {em_andamento_sem_tempos.createdate.count()} clientes")
             st.dataframe(em_andamento_sem_tempos)
@@ -296,9 +297,9 @@ with tab2:
 with tab3:
     resumo_tempos, tabela_tempos = tabelatempos(implantacoes)
     st.write("#### Tempos por etapa")
-    extras = st.toggle("Mostrar apenas clientes em andamento", value=False)
+    andamento = st.toggle("Mostrar apenas clientes em andamento", value=False)
 
-    if extras == True:
+    if andamento == True:
         resumo_tempos, tabela_tempos = tabelatempos(em_andamento)
         fig2 = px.scatter(
             em_andamento_sem_tempos,

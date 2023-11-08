@@ -99,6 +99,9 @@ def quantidade_contratos(qtd):
     else:
       return np.nan
 
+def linkhubspot(id):
+  return f"https://app.hubspot.com/contacts/20131994/record/0-5/{id}"
+
 @st.cache_data
 def atualiza_dados():
     url = f"https://api.hubapi.com/crm/v3/objects/{object_type}/search"
@@ -195,9 +198,10 @@ def atualiza_dados():
     implantacoes['Atraso'] = np.where(implantacoes['tempo_processo']>implantacoes['prazo_implantacao'], True, False)
     implantacoes['Finalizadas'] = np.where(implantacoes['etapa_pipeline']=='FINALIZADAS', True, False)
     implantacoes['Canceladas'] = np.where(implantacoes['etapa_pipeline']=='CANCELADAS', True, False)
+    implantacoes['Link'] = implantacoes['hs_object_id'].apply(linkhubspot)
 
     datas_padrao = [item for item in lista_colunas if 'hs_date' in item]
-    colunas_inuteis = ['imob__quantidade_contratos','hubspot_owner_id','hs_object_id', 'hs_pipeline_stage', 'imob__plano_imobiliarias', 'hs_time_in_63284077', 'hs_time_in_13217152', 'hs_time_in_63284075','hs_time_in_13217153', 'hs_time_in_88963628']
+    colunas_inuteis = ['imob__quantidade_contratos','hubspot_owner_id', 'hs_pipeline_stage', 'imob__plano_imobiliarias', 'hs_time_in_63284077', 'hs_time_in_13217152', 'hs_time_in_63284075','hs_time_in_13217153', 'hs_time_in_88963628']
     colunas_inuteis.extend(datas_padrao)
     implantacoes = implantacoes.drop(columns = colunas_inuteis).round(2)
 
@@ -231,14 +235,14 @@ def metricas_dashboard(implantacoes):
 
     iniciadas_no_mes = em_andamento.loc[(em_andamento['createdate']>=primeiro_dia_do_mes_atual)&(em_andamento['createdate']<primeiro_dia_proximo_mes)].createdate.count()
     contratos_iniciados = em_andamento.loc[(em_andamento['createdate']>=primeiro_dia_do_mes_atual)&(em_andamento['createdate']<primeiro_dia_proximo_mes)].qtde_contratos.sum()
-    finalizadas_no_mes = em_andamento.loc[(em_andamento['closed_date']>=primeiro_dia_do_mes_atual)&(em_andamento['closed_date']<primeiro_dia_proximo_mes)&(em_andamento['etapa_pipeline']=='FINALIZADAS')].createdate.count()
-    contratos_finalizados = em_andamento.loc[(em_andamento['closed_date']>=primeiro_dia_do_mes_atual)&(em_andamento['closed_date']<primeiro_dia_proximo_mes)&(em_andamento['etapa_pipeline']=='FINALIZADAS')].qtde_contratos.sum()
-    canceladas_no_mes = em_andamento.loc[(em_andamento['closed_date']>=primeiro_dia_do_mes_atual)&(em_andamento['closed_date']<primeiro_dia_proximo_mes)&(em_andamento['etapa_pipeline']=='CANCELADAS')].createdate.count()
-    contratos_cancelados = em_andamento.loc[(em_andamento['closed_date']>=primeiro_dia_do_mes_atual)&(em_andamento['closed_date']<primeiro_dia_proximo_mes)&(em_andamento['etapa_pipeline']=='CANCELADAS')].qtde_contratos.sum()
+    finalizadas_no_mes = implantacoes.loc[(implantacoes['closed_date']>=primeiro_dia_do_mes_atual)&(implantacoes['closed_date']<primeiro_dia_proximo_mes)&(implantacoes['etapa_pipeline']=='FINALIZADAS')].createdate.count()
+    contratos_finalizados = implantacoes.loc[(implantacoes['closed_date']>=primeiro_dia_do_mes_atual)&(implantacoes['closed_date']<primeiro_dia_proximo_mes)&(implantacoes['etapa_pipeline']=='FINALIZADAS')].qtde_contratos.sum()
+    canceladas_no_mes = implantacoes.loc[(implantacoes['closed_date']>=primeiro_dia_do_mes_atual)&(implantacoes['closed_date']<primeiro_dia_proximo_mes)&(implantacoes['etapa_pipeline']=='CANCELADAS')].createdate.count()
+    contratos_cancelados = implantacoes.loc[(implantacoes['closed_date']>=primeiro_dia_do_mes_atual)&(implantacoes['closed_date']<primeiro_dia_proximo_mes)&(implantacoes['etapa_pipeline']=='CANCELADAS')].qtde_contratos.sum()
     media_contratos = em_andamento.qtde_contratos.mean()
     saldo_do_mes = iniciadas_no_mes - finalizadas_no_mes - canceladas_no_mes
-    finalizadas_por_consultor = finalizadas_no_mes / consultores_ativos
-    conversao_processo = finalizadas_no_mes*100 / (contagem + finalizadas_no_mes + canceladas_no_mes)
+    finalizadas_por_consultor = round(finalizadas_no_mes / consultores_ativos, 2)
+    conversao_processo = round(finalizadas_no_mes*100 / (contagem + finalizadas_no_mes + canceladas_no_mes),2)
     troughput = round(finalizadas_no_mes / iniciadas_no_mes, 2)
     tempo_medio = round(em_andamento['tempo_processo'].mean(), 2)
 
