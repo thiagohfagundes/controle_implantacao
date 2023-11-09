@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from functions import atualiza_dados, metricas_em_andamento, verificaprimeiropagamento, metricas_dashboard, ultimos12meses, tabelatempos
+from functions import atualiza_dados, serietemporal, metricas_em_andamento, verificaprimeiropagamento, metricas_dashboard, ultimos12meses, tabelatempos
 import plotly.express as px
 from pandas._libs.tslibs.timestamps import Timestamp
 
@@ -72,7 +72,7 @@ with col1:
 with col2:
     st.button("Atualizar", st.cache_data.clear())
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Dashboard", "Clientes em andamento", "Tempos", "Dados gerais", "Kickoff", "Clientes em risco", "Tarefas"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["Dashboard", "Clientes em andamento", "Tempos", "Dados gerais", "Kickoff", "Séries temporais", "Clientes em risco", "Tarefas"])
 
 with tab4:
     options = st.multiselect(
@@ -350,9 +350,48 @@ with tab5:
 
 
 with tab6:
+    prazo = st.selectbox("Selecione um prazo", ['Mês atual', 'Este ano', 'Últimos 3 meses', 'Últimos 6 meses', 'Últimos 12 meses'])
+    frequencia = st.selectbox("Selecione a frequência", ['Diária', 'Semanal', 'Mensal'])
+
+    dados_iniciadas = serietemporal(implantacoes, prazo, frequencia, 'createdate')
+    dados_finalizadas = serietemporal(implantacoes.loc[implantacoes['etapa_pipeline']=='FINALIZADAS'], prazo, frequencia, 'closed_date')
+    dados_canceladas = serietemporal(implantacoes.loc[implantacoes['etapa_pipeline']=='CANCELADAS'], prazo, frequencia, 'closed_date')
+    dados = pd.merge(dados_iniciadas, dados_finalizadas, on='data', how='outer')
+    dados = pd.merge(dados, dados_canceladas, on='data', how='outer')
+    dados.columns = ['data', 'iniciadas', 'finalizadas', 'canceladas']
+    dados['saldo'] = dados['iniciadas'] - dados['finalizadas'] - dados['canceladas']
+    dados = dados.fillna(0)
+
+    dados['em andamento'] = float('nan')
+    valor_atual = 148
+    dados.loc[dados.index[-1], 'em andamento'] = valor_atual
+    for i in range(len(dados) - 2, -1, -1):
+        dados.at[i, 'em andamento'] = dados.at[i + 1, 'em andamento'] - dados.at[i + 1, 'saldo']
+    dados['em andamento'].fillna(0, inplace=True)
+
+    fig = px.line(dados, x='data', y=['iniciadas', 'finalizadas', 'canceladas'], labels={'value': 'Valores'})
+    fig.update_layout(title='Entradas e saídas do pipeline de Implantação',
+        xaxis_title='Data',
+        yaxis_title='Implantações'
+    )
+
+    st.plotly_chart(fig, use_container_width=True, theme='streamlit')
+
+    fig = px.line(dados, x='data', y=['em andamento'], labels={'value': 'Valores'})
+    fig.update_layout(title='Implantações em andamento',
+        xaxis_title='Data',
+        yaxis_title='Implantações'
+    )
+
+    st.plotly_chart(fig, use_container_width=True, theme='streamlit')
+
+    st.dataframe(dados)
+    st.dataframe(dados.describe())
+
+with tab7:
     st.write("#### Clientes em risco")
     st.text("Em breve")
 
-with tab7:
+with tab8:
     st.write("#### Tarefas")
     st.text("Em breve")

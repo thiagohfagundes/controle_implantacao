@@ -1,4 +1,5 @@
 import streamlit as st
+import pytimetk as tk
 import pandas as pd
 import numpy as np
 import requests
@@ -12,6 +13,12 @@ access_token_assinas = st.secrets["access_token_assinas"]
 object_type = 'tickets'
 pipeline_id = '27860857'
 propriedades = ['createdate', 'subject', 'cs__licenca', 'hs_pipeline_stage', 'hubspot_owner_id', 'imob__tiers', 'imp___erp__produto', 'imp___erp__combo', 'imob__quantidade_contratos','imob__plano_imobiliarias', 'closed_date', 'hs_date_exited_66260749']
+headers_assinas = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'app_token': app_token_assinas,
+    'access_token': access_token_assinas
+  }
+
 
 def atribuir_plano(nome_plano):
   if nome_plano != None:
@@ -299,3 +306,72 @@ def verificaprimeiropagamento():
     df = pd.DataFrame(response)
     primeiroboletopendente = df['st_identificador_plc'].drop_duplicates()
     return primeiroboletopendente
+
+def serietemporal(df, prazo, frequencia, dias):
+  df['contador'] = 1
+
+  data_atual = datetime.now()
+  datainicio = datetime(data_atual.year, 1, 1)
+  datafinal = data_atual
+  datainicio = Timestamp(datainicio, tz='UTC')
+  datafinal = Timestamp(datafinal, tz='UTC')
+
+  if prazo == 'Mês atual':
+    datainicio = datetime(data_atual.year, data_atual.month, 1)
+    datainicio = Timestamp(datainicio, tz='UTC')
+  elif prazo == 'Este ano':
+    datainicio = datetime(data_atual.year, 1, 1)
+    datainicio = Timestamp(datainicio, tz='UTC')
+  elif prazo == 'Últimos 3 meses':
+    if (data_atual.month - 2) <= 0:
+      delta = 12 - data_atual.month
+      mes = 12 - delta
+      ano = data_atual.year - 1
+    else:
+      mes = (data_atual.month - 2)
+      ano = data_atual.year
+    datainicio = datetime(ano, mes, 1)
+    datainicio = Timestamp(datainicio, tz='UTC')
+  elif prazo == 'Últimos 6 meses':
+    if (data_atual.month - 5) <= 0:
+      delta = 12 - data_atual.month
+      mes = 12 - delta
+      ano = data_atual.year - 1
+    else:
+      mes = (data_atual.month - 5)
+      ano = data_atual.year
+    datainicio = datetime(ano, mes, 1)
+    datainicio = Timestamp(datainicio, tz='UTC')
+  elif prazo == 'Últimos 12 meses':
+    if (data_atual.month - 11) <= 0:
+      delta = 12 - data_atual.month
+      mes = 12 - delta
+      ano = data_atual.year - 1
+    else:
+      mes = (data_atual.month - 11)
+      ano = data_atual.year
+    datainicio = datetime(ano, mes, 1)
+    datainicio = Timestamp(datainicio, tz='UTC')
+
+  if frequencia == 'Diária':
+    frequencia = 'D'
+  elif frequencia == 'Semanal':
+    frequencia = 'W'
+  elif frequencia == 'Mensal':
+    frequencia = 'M'
+  
+  df = df.loc[(df[dias]>=datainicio)&(df[dias]<datafinal)]
+
+  dados = df.summarize_by_time(
+    date_column = dias,
+    value_column = 'contador',
+    freq = frequencia,
+    agg_func = 'sum'
+  )
+  dados = dados.rename(columns = {dias: 'data'})
+  return dados
+
+
+
+
+
