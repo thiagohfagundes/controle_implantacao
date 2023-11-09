@@ -7,7 +7,7 @@ import plotly.express as px
 from pandas._libs.tslibs.timestamps import Timestamp
 
 st.set_page_config(
-    page_title='Controle Implantação 🚀', 
+    page_title='Controle Implantação', 
     page_icon='🚀', 
     layout="wide", 
     #initial_sidebar_state="auto", 
@@ -64,7 +64,7 @@ with st.sidebar:
         st.rerun()
 
 # ----------- Principal ------------ #
-st.write("## Controle Implantação ERP 🚀")
+st.write("### Controle Implantação ERP")
 col1, col2 = st.columns(spec=[8,2])
 
 with col1:
