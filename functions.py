@@ -52,6 +52,20 @@ def tempoprocesso(row):
     diferenca = (data_hoje - data_inicio).days
   return diferenca
 
+def tempo_na_etapa(row):
+  etapa = row['hs_pipeline_stage']
+  data_hoje = datetime.now()
+  data_entrada_etapa = row[f"hs_date_entered_{etapa}"].tz_localize(None)
+  if (etapa != '63284075') and (etapa != '63284077'):
+    tempo_na_etapa = (data_hoje - data_entrada_etapa).days
+    return tempo_na_etapa
+  
+def tempo_sem_modificacao(data):
+  data_ult_modif = data.tz_localize(None)
+  data_hoje = datetime.now()
+  tempo_sem_modif = (data_hoje - data_ult_modif).days
+  return tempo_sem_modif
+
 def combo(status_combo):
   if status_combo == 'true':
     return True
@@ -198,6 +212,8 @@ def atualiza_dados():
     implantacoes['qtde_contratos'] = implantacoes['imob__quantidade_contratos'].apply(quantidade_contratos)
     implantacoes['implantacao_extra'] = implantacoes['subject'].apply(imp_extra)
     implantacoes['tempo_processo'] = implantacoes.apply(tempoprocesso, axis=1)
+    implantacoes['tempo_na_etapa'] = implantacoes.apply(tempo_na_etapa, axis=1)
+    implantacoes['tempo_sem_modif'] = implantacoes['hs_lastmodifieddate'].apply(tempo_sem_modificacao)
     colunastempos_ms = [item for item in lista_colunas if 'time' in item]
     implantacoes[colunastempos_ms] = implantacoes[colunastempos_ms].apply(pd.to_numeric) / 86400000
     implantacoes[colunastempos_ms] = implantacoes[colunastempos_ms].fillna(0)
@@ -212,11 +228,69 @@ def atualiza_dados():
     colunas_inuteis.extend(datas_padrao)
     implantacoes = implantacoes.drop(columns = colunas_inuteis).round(2)
 
+    concluidas = implantacoes.loc[(implantacoes['Finalizadas']==True)|(implantacoes['Canceladas']==True)]
     em_andamento = implantacoes.loc[(implantacoes['Finalizadas']==False)&(implantacoes['Canceladas']==False)]
     em_andamento = em_andamento.drop(columns = ['closed_date', 'Finalizadas', 'Canceladas'])
 
     data_atualizacao = datetime.now()
-    return implantacoes, em_andamento, data_atualizacao
+    return implantacoes, em_andamento, data_atualizacao, concluidas
+
+def dados_sankey(concluidas):
+    tier_a = concluidas.loc[concluidas['qtde_contratos']>=1000]
+    tier_b = concluidas.loc[(concluidas['qtde_contratos']>=500)&(concluidas['qtde_contratos']<1000)]
+    tier_c = concluidas.loc[(concluidas['qtde_contratos']>100)&(concluidas['qtde_contratos']<500)]
+    tier_d = concluidas.loc[(concluidas['qtde_contratos']>=50)&(concluidas['qtde_contratos']<100)]
+    tier_e = concluidas.loc[(concluidas['qtde_contratos']<50)]
+    
+    iniciados = []
+    finalizados = []
+    cancelados = []
+    for _set in (tier_a, tier_b, tier_c, tier_d, tier_e):
+      iniciados.append(_set.createdate.count())
+      finalizados.append(_set.loc[_set['Finalizadas']==True].createdate.count())
+      cancelados.append(_set.loc[_set['Canceladas']==True].createdate.count())
+
+    label = ['Tier A', 'Tier B', 'Tier C', 'Tier D', 'Tier E', 'Finalizadas', 'Canceladas']
+    source = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4]
+    target = [5, 6, 5, 6, 5, 6, 5, 6, 5, 6]
+    value = [finalizados[0], cancelados[0], finalizados[1], cancelados[1], finalizados[2], cancelados[2], finalizados[3], cancelados[3], finalizados[4], cancelados[4]]
+
+    return label, source, target, value
+
+def cohort_por_etapa(implantacoes):
+    data_atual = datetime.now()
+    datainicio = datetime(data_atual.year, 1, 1)
+    datainicio = Timestamp(datainicio, tz='UTC')
+
+    def data_cancelamento(row):
+      if row['etapa_pipeline'] == 'CANCELADAS':
+        return row['closed_date']
+      
+    implantacoes = implantacoes.loc[implantacoes['createdate']>=datainicio]
+
+    implantacoes['data_cancelamento'] = implantacoes.apply(data_cancelamento, axis=1)
+    dados_cohort = implantacoes[['createdate', 'data_cancelamento']]
+    dados_cohort['mes_criacao'] = dados_cohort['createdate'].dt.month
+    dados_cohort['mes_cancelamento'] = dados_cohort['data_cancelamento'].dt.month
+    dados_pivot = dados_cohort.groupby(['mes_criacao', 'mes_cancelamento']).count().reset_index()
+    dados_pivot = dados_pivot.pivot(index='mes_criacao', columns='mes_cancelamento', values='createdate')
+    dados_pivot.fillna(0, inplace=True)
+
+    implantacoes = implantacoes[['createdate', 'etapa_pipeline']]
+    implantacoes['mes'] = implantacoes['createdate'].dt.month
+    implantacoes_iniciadas = implantacoes.groupby(['mes']).count()
+    implantacoes_cohort = implantacoes.groupby(['mes', 'etapa_pipeline']).count().reset_index()
+    implantacoes_cohort = implantacoes_cohort.pivot(index='mes', columns='etapa_pipeline', values='createdate')
+    implantacoes_cohort['INICIADAS'] = implantacoes_iniciadas[['createdate']]
+    if 'CANCELADAS' in implantacoes_cohort.columns:
+      implantacoes_cohort['conversão'] = round(implantacoes_cohort['FINALIZADAS']*100 / implantacoes_cohort['INICIADAS'],2)
+      implantacoes_cohort['churn rate'] = round(implantacoes_cohort['CANCELADAS']*100 / implantacoes_cohort['INICIADAS'],2)
+    else:
+      implantacoes_cohort['conversão'] = 0
+      implantacoes_cohort['churn rate'] = 0
+    implantacoes_cohort.fillna(0, inplace=True)
+
+    return implantacoes_cohort, dados_pivot
 
 def metricas_em_andamento(implantacoes):
     contagem = implantacoes['createdate'].count()

@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from functions import atualiza_dados, serietemporal, metricas_em_andamento, verificaprimeiropagamento, metricas_dashboard, ultimos12meses, tabelatempos
+from functions import atualiza_dados, cohort_por_etapa, dados_sankey, serietemporal, metricas_em_andamento, verificaprimeiropagamento, metricas_dashboard, ultimos12meses, tabelatempos
 import plotly.express as px
+import plotly.graph_objects as go
 from pandas._libs.tslibs.timestamps import Timestamp
 
 st.set_page_config(
@@ -18,7 +19,7 @@ st.set_page_config(
     }
 )
 
-implantacoes, em_andamento, data_atualizacao = atualiza_dados()
+implantacoes, em_andamento, data_atualizacao, concluidas = atualiza_dados()
 colunastempos_ms = [item for item in implantacoes.columns if 'time' in item]
 implantacoes_sem_tempos = implantacoes.drop(columns = colunastempos_ms).round(2)
 em_andamento_sem_tempos = em_andamento.drop(columns = colunastempos_ms).round(2)
@@ -72,7 +73,7 @@ with col1:
 with col2:
     st.button("Atualizar", st.cache_data.clear())
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["Dashboard", "Clientes em andamento", "Tempos", "Dados gerais", "Kickoff", "Séries temporais", "Clientes em risco", "Tarefas"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs(["Dashboard", "Clientes em andamento", "Tempos", "Dados gerais", "Kickoff", "Séries temporais", "Clientes em risco", "Cohorts", "Tarefas"])
 
 with tab4:
     options = st.multiselect(
@@ -133,6 +134,18 @@ with tab1:
         st.metric("Churn rate", f"{round(canceladas_no_mes*100/(contagem + finalizadas_no_mes + canceladas_no_mes),2)}%")
         st.metric("Consultores ativos", consultores_ativos)
         st.metric("Troughput", f"{troughput}%")
+
+    st.divider()
+
+    st.write('### Visão das implantações concluídas no período')
+
+    label, source, target, value = dados_sankey(concluidas)
+    link = dict(source = source, target = target, value = value)
+    node = dict(label=label, pad=50, thickness=5)
+    data = go.Sankey(link=link, node=node)
+
+    fig = go.Figure(data)
+    st.plotly_chart(fig, use_container_width=True, theme = 'streamlit')
 
     st.divider()
 
@@ -286,9 +299,9 @@ with tab2:
 
     if tempos:
         if atrasadas == True:
-            em_andamento_sem_tempos = em_andamento_sem_tempos.loc[(em_andamento_sem_tempos['Atraso']==True)&(em_andamento_sem_tempos['tempo_processo']>=tempos[0])&(em_andamento['tempo_processo']<tempos[1])]
-            st.write(f"Exibindo {em_andamento_sem_tempos.createdate.count()} clientes")
-            st.dataframe(em_andamento_sem_tempos)
+            em_andamento_sem_tempos_atrasados = em_andamento_sem_tempos.loc[(em_andamento_sem_tempos['Atraso']==True)&(em_andamento_sem_tempos['tempo_processo']>=tempos[0])&(em_andamento['tempo_processo']<tempos[1])]
+            st.write(f"Exibindo {em_andamento_sem_tempos_atrasados.createdate.count()} clientes")
+            st.dataframe(em_andamento_sem_tempos_atrasados)
         else:
             em_andamento_sem_tempos = em_andamento_sem_tempos.loc[(em_andamento_sem_tempos['tempo_processo']>=tempos[0])&(em_andamento_sem_tempos['tempo_processo']<tempos[1])]
             st.write(f"Exibindo {em_andamento_sem_tempos.createdate.count()} clientes")
@@ -326,27 +339,6 @@ with tab3:
 
     st.write("#### Tempo x Quantidade de contratos")
     st.plotly_chart(fig2, use_container_width=True, theme='streamlit')
-
-
-with tab5:
-    st.write("#### Gestão de kickoff")
-
-    tab1, tab2, tab3, tab4 = st.columns(spec=[1,1,1,1])
-
-    with tab1:
-        st.metric("Clientes em KICKOFF", em_andamento.loc[em_andamento['etapa_pipeline']=='KICKOFF'].createdate.count())
-    with tab2:
-        st.metric("Clientes em KICKOFF AGENDADO", em_andamento.loc[em_andamento['etapa_pipeline']=='KICKOFF AGENDADO'].createdate.count())
-    primeiroboletopendente = verificaprimeiropagamento()
-    aguardandokickoff = em_andamento.loc[(em_andamento['etapa_pipeline']=='KICKOFF')|(em_andamento['etapa_pipeline']=='KICKOFF AGENDADO')]
-    aguardandokickoff['pendente'] = aguardandokickoff['cs__licenca'].isin(primeiroboletopendente)
-    aguardandokickoff = aguardandokickoff[['subject', 'createdate', 'imob__tiers', 'etapa_pipeline', 'Nome do proprietário', 'plano_macro', 'qtde_contratos', 'tempo_processo', 'pendente']]
-    aguardandokickoff = aguardandokickoff.loc[aguardandokickoff['pendente'] == True]
-    with tab3:
-        st.metric("Primeiros boletos pendentes", aguardandokickoff.createdate.count())
-    
-    st.write("#### Clientes com boleto pendente")
-    st.dataframe(aguardandokickoff)
 
 
 with tab6:
@@ -390,8 +382,60 @@ with tab6:
 
 with tab7:
     st.write("#### Clientes em risco")
-    st.text("Em breve")
+    muito_tempo_na_etapa = em_andamento_sem_tempos.loc[em_andamento_sem_tempos['tempo_na_etapa']>=14].sort_values(by='tempo_na_etapa', ascending=False)
+    muito_tempo_sem_modif = em_andamento_sem_tempos.loc[em_andamento_sem_tempos['tempo_sem_modif']>=14].sort_values(by='tempo_sem_modif', ascending=False)
+    
+    st.write(f"{muito_tempo_na_etapa.createdate.count()} clientes há mais de 14 dias na etapa")
+    st.dataframe(muito_tempo_na_etapa)
+    st.write(f"{muito_tempo_sem_modif.createdate.count()} clientes há mais de 14 dias sem modificação")
+    st.dataframe(muito_tempo_sem_modif)
 
 with tab8:
+    st.write("#### Cohorts")
+
+    st.write("##### Cohort este ano")
+    
+    implantacoes_cohort, dados_pivot = cohort_por_etapa(implantacoes)
+    cohort_resumido = implantacoes_cohort[['INICIADAS', 'FINALIZADAS', 'CANCELADAS', 'churn rate', 'conversão']]
+    cohort_resumido['EM ANDAMENTO'] = cohort_resumido['INICIADAS'] - cohort_resumido['FINALIZADAS'] - cohort_resumido['CANCELADAS']
+
+    fig = px.imshow(dados_pivot, text_auto=True, aspect="auto", color_continuous_scale='reds')
+    fig.update_xaxes(side="top")
+    st.plotly_chart(fig, use_container_width=True, theme='streamlit')
+
+    st.write("##### Cohort resumido")
+    st.dataframe(cohort_resumido)
+
+    st.write("##### Cohort completo")
+    st.dataframe(implantacoes_cohort)
+
+    st.divider()   
+
+with tab9:
     st.write("#### Tarefas")
     st.text("Em breve")
+
+
+with tab5:
+    st.write("#### Gestão de kickoff")
+
+    tab1, tab2, tab3, tab4 = st.columns(spec=[1,1,1,1])
+
+    with tab1:
+        st.metric("Clientes em KICKOFF", em_andamento.loc[em_andamento['etapa_pipeline']=='KICKOFF'].createdate.count())
+    with tab2:
+        st.metric("Clientes em KICKOFF AGENDADO", em_andamento.loc[em_andamento['etapa_pipeline']=='KICKOFF AGENDADO'].createdate.count())
+    try: 
+        primeiroboletopendente = verificaprimeiropagamento()
+        aguardandokickoff = em_andamento.loc[(em_andamento['etapa_pipeline']=='KICKOFF')|(em_andamento['etapa_pipeline']=='KICKOFF AGENDADO')]
+        aguardandokickoff['pendente'] = aguardandokickoff['cs__licenca'].isin(primeiroboletopendente)
+        aguardandokickoff = aguardandokickoff[['subject', 'createdate', 'imob__tiers', 'etapa_pipeline', 'Nome do proprietário', 'plano_macro', 'qtde_contratos', 'tempo_processo', 'pendente']]
+        aguardandokickoff = aguardandokickoff.loc[aguardandokickoff['pendente'] == True]
+        with tab3:
+            st.metric("Primeiros boletos pendentes", aguardandokickoff.createdate.count())
+    except:
+        with tab3:
+            st.write('Não foi possível conexão com API do Assinaturas')
+    
+    st.write("#### Clientes com boleto pendente")
+    st.dataframe(aguardandokickoff)
