@@ -310,7 +310,7 @@ def metricas_dashboard(implantacoes):
 
     data_atual = datetime.now()
     if data_atual.month == 12:
-      primeiro_dia_proximo_mes = datetime(data_atual.year, 1, 1)
+      primeiro_dia_proximo_mes = datetime(data_atual.year + 1, 1, 1)
     else:
       primeiro_dia_proximo_mes = datetime(data_atual.year, (data_atual.month + 1), 1)
     
