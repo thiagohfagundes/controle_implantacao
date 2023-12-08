@@ -216,7 +216,6 @@ def atualiza_dados():
     implantacoes['tempo_sem_modif'] = implantacoes['hs_lastmodifieddate'].apply(tempo_sem_modificacao)
     colunastempos_ms = [item for item in lista_colunas if 'time' in item]
     implantacoes[colunastempos_ms] = implantacoes[colunastempos_ms].apply(pd.to_numeric) / 86400000
-    implantacoes[colunastempos_ms] = implantacoes[colunastempos_ms].fillna(0)
     implantacoes['prazo_implantacao'] = implantacoes['plano_macro'].apply(atribuir_prazo)
     implantacoes['Atraso'] = np.where(implantacoes['tempo_processo']>implantacoes['prazo_implantacao'], True, False)
     implantacoes['Finalizadas'] = np.where(implantacoes['etapa_pipeline']=='FINALIZADAS', True, False)
@@ -224,7 +223,8 @@ def atualiza_dados():
     implantacoes['Link'] = implantacoes['hs_object_id'].apply(linkhubspot)
 
     datas_padrao = [item for item in lista_colunas if 'hs_date' in item]
-    colunas_inuteis = ['imob__quantidade_contratos','hubspot_owner_id', 'hs_pipeline_stage', 'imob__plano_imobiliarias', 'hs_time_in_63284077', 'hs_time_in_13217152', 'hs_time_in_63284075','hs_time_in_13217153', 'hs_time_in_88963628']
+    datas = implantacoes[datas_padrao]
+    colunas_inuteis = ['imob__quantidade_contratos','hubspot_owner_id', 'hs_pipeline_stage', 'imob__plano_imobiliarias', 'hs_time_in_63284077', 'hs_time_in_13217152', 'hs_time_in_13217153', 'hs_time_in_88963628']
     colunas_inuteis.extend(datas_padrao)
     implantacoes = implantacoes.drop(columns = colunas_inuteis).round(2)
 
@@ -233,7 +233,7 @@ def atualiza_dados():
     em_andamento = em_andamento.drop(columns = ['closed_date', 'Finalizadas', 'Canceladas'])
 
     data_atualizacao = datetime.now()
-    return implantacoes, em_andamento, data_atualizacao, concluidas
+    return implantacoes, em_andamento, data_atualizacao, datas, concluidas, stages
 
 def dados_sankey(concluidas):
     tier_a = concluidas.loc[concluidas['qtde_contratos']>=1000]
@@ -309,8 +309,12 @@ def metricas_dashboard(implantacoes):
     clientes_na_fila = em_andamento.loc[em_andamento['etapa_pipeline']=='KICKOFF'].createdate.count()
 
     data_atual = datetime.now()
+    if data_atual.month == 12:
+      primeiro_dia_proximo_mes = datetime(data_atual.year, 1, 1)
+    else:
+      primeiro_dia_proximo_mes = datetime(data_atual.year, (data_atual.month + 1), 1)
+    
     primeiro_dia_do_mes_atual = datetime(data_atual.year, data_atual.month, 1)
-    primeiro_dia_proximo_mes = datetime(data_atual.year, (data_atual.month + 1), 1)
     primeiro_dia_do_mes_atual = Timestamp(primeiro_dia_do_mes_atual, tz='UTC')
     primeiro_dia_proximo_mes = Timestamp(primeiro_dia_proximo_mes, tz='UTC')
 
@@ -445,7 +449,18 @@ def serietemporal(df, prazo, frequencia, dias):
   dados = dados.rename(columns = {dias: 'data'})
   return dados
 
-
+def funil(tempos, stages):
+  tempos = tempos.reset_index()
+  tempos = tempos[['index', 'count']]
+  tempos['index'] = tempos['index'].str.extract(r'hs_time_in_(\d+)')
+  tempos = tempos.rename(columns = {'index': 'hs_pipeline_stage'})
+  funil = pd.merge(stages, tempos, on='hs_pipeline_stage', how='left')
+  funil['churn'] = funil['count'].diff(-1)
+  funil['churn rate'] = funil['churn']*100/funil['count']
+  filtro = (funil['etapa_pipeline'] != 'CANCELADAS') & (funil['etapa_pipeline'] != 'TREINAMENTOS EXTRAS')
+  funil = funil[filtro]
+  funil = funil.fillna(0)
+  return funil
 
 
 

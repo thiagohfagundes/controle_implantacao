@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from functions import atualiza_dados, cohort_por_etapa, dados_sankey, serietemporal, metricas_em_andamento, verificaprimeiropagamento, metricas_dashboard, ultimos12meses, tabelatempos
+from functions import atualiza_dados, cohort_por_etapa, dados_sankey, funil, serietemporal, metricas_em_andamento, verificaprimeiropagamento, metricas_dashboard, ultimos12meses, tabelatempos
 import plotly.express as px
 import plotly.graph_objects as go
 from pandas._libs.tslibs.timestamps import Timestamp
@@ -19,7 +19,7 @@ st.set_page_config(
     }
 )
 
-implantacoes, em_andamento, data_atualizacao, concluidas = atualiza_dados()
+implantacoes, em_andamento, data_atualizacao, datas, concluidas, stages = atualiza_dados()
 colunastempos_ms = [item for item in implantacoes.columns if 'time' in item]
 implantacoes_sem_tempos = implantacoes.drop(columns = colunastempos_ms).round(2)
 em_andamento_sem_tempos = em_andamento.drop(columns = colunastempos_ms).round(2)
@@ -337,6 +337,12 @@ with tab3:
     st.write("#### Visão geral de tempos")
     st.dataframe(resumo_tempos)
 
+    pipeline = funil(resumo_tempos, stages)
+    pipeline.info()
+    graficopipe = px.funnel(pipeline, x='count', y='hs_pipeline_stage')
+    st.plotly_chart(graficopipe, use_container_width=True, theme='streamlit')
+
+
     st.write("#### Tempo x Quantidade de contratos")
     st.plotly_chart(fig2, use_container_width=True, theme='streamlit')
 
@@ -351,8 +357,9 @@ with tab6:
     dados = pd.merge(dados_iniciadas, dados_finalizadas, on='data', how='outer')
     dados = pd.merge(dados, dados_canceladas, on='data', how='outer')
     dados.columns = ['data', 'iniciadas', 'finalizadas', 'canceladas']
+    dados.fillna(0)
+    print(dados)
     dados['saldo'] = dados['iniciadas'] - dados['finalizadas'] - dados['canceladas']
-    dados = dados.fillna(0)
 
     dados['em andamento'] = float('nan')
     valor_atual = 148
